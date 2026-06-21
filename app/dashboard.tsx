@@ -1,8 +1,15 @@
-import { Alert, ActivityIndicator } from "react-native";
+import { Alert, ActivityIndicator, Modal } from "react-native";
 import { router } from "expo-router";
-import React, { useContext, useEffect } from "react";
+import React, { useContext, useEffect, useState } from "react";
 import { HabitContext } from "../context/Habitcontext";
 import { SafeAreaView } from "react-native-safe-area-context";
+import {
+  getWeekDates,
+  toDateKey,
+  todayDateKey,
+  formatFullDate,
+  WEEKDAY_SHORT,
+} from "../lib/dateUtils";
 import {
   StyleSheet,
   Text,
@@ -17,23 +24,45 @@ import {
 interface DayStreak {
   day: string;
   date: number;
+  dateKey: string;
   isComplete: boolean;
-  isToday?: boolean;
+  isToday: boolean;
 }
-
-// --- Mock Data (weekly strip is still illustrative; not stored yet) ---
-const WEEKLY_STREAK: DayStreak[] = [
-  { day: 'Mon', date: 12, isComplete: true },
-  { day: 'Tue', date: 13, isComplete: true },
-  { day: 'Wed', date: 14, isComplete: true },
-  { day: 'Thu', date: 15, isComplete: true },
-  { day: 'Fri', date: 16, isComplete: false, isToday: true },
-  { day: 'Sat', date: 17, isComplete: false },
-  { day: 'Sun', date: 18, isComplete: false },
-];
 
 const { width } = Dimensions.get('window');
 
+const ABOUT_SECTIONS = [
+  {
+    icon: "➕",
+    title: "Add a habit",
+    description: "Tap the dark + button in the bottom-right corner and fill in a name, time, and category.",
+  },
+  {
+    icon: "✅",
+    title: "Mark a habit done",
+    description: "Tap anywhere on a habit card to check it off for today. Tap again to undo it.",
+  },
+  {
+    icon: "🗑️",
+    title: "Delete a habit",
+    description: "Tap the trash icon on a habit card, then confirm. This removes it and its history permanently.",
+  },
+  {
+    icon: "🔥",
+    title: "Current Streak",
+    description: "Counts consecutive days where every single habit was checked off. Missing even one habit on a day breaks the streak.",
+  },
+  {
+    icon: "📊",
+    title: "Weekly & Monthly Report",
+    description: "Tap the report card on the dashboard to see a completion-rate breakdown for each habit, this week or this month.",
+  },
+  {
+    icon: "🚪",
+    title: "Logout",
+    description: "Tap your avatar (top-right circle) and confirm to sign out of your account.",
+  },
+];
 
 export default function DashboardScreen() {
   const {
@@ -44,6 +73,7 @@ export default function DashboardScreen() {
     toggleHabit,
     deleteHabit,
     signOut,
+    fetchLogsForRange,
   } = useContext(HabitContext);
 
   // Auth guard: bounce anyone without a session back to the welcome screen
@@ -60,6 +90,108 @@ export default function DashboardScreen() {
     session?.user?.user_metadata?.full_name ||
     session?.user?.email?.split("@")[0] ||
     "User";
+
+  const [aboutVisible, setAboutVisible] = useState(false);
+
+  // --- Live calendar strip: always derived from the device's current date,
+  // and colored using *real* habit_logs data — never hardcoded. ---
+  const [weekStrip, setWeekStrip] = useState<DayStreak[]>([]);
+
+  useEffect(() => {
+    if (!session?.user) return;
+
+    let cancelled = false;
+    const weekDates = getWeekDates(new Date()); // Mon -> Sun, computed live
+    const todayKey = todayDateKey();
+    const startKey = toDateKey(weekDates[0]);
+    const endKey = toDateKey(weekDates[6]);
+
+    fetchLogsForRange(startKey, endKey).then((logs) => {
+      if (cancelled) return;
+
+      // A day counts as "complete" if every habit that exists today was
+      // logged as done on that date.
+      const countsByDate = new Map<string, Set<string>>();
+      for (const log of logs) {
+        const set = countsByDate.get(log.completed_date) ?? new Set<string>();
+        set.add(log.habit_id);
+        countsByDate.set(log.completed_date, set);
+      }
+
+      const strip: DayStreak[] = weekDates.map((d, i) => {
+        const key = toDateKey(d);
+        const doneCount = countsByDate.get(key)?.size ?? 0;
+        return {
+          day: WEEKDAY_SHORT[i],
+          date: d.getDate(),
+          dateKey: key,
+          isComplete: habits.length > 0 && doneCount >= habits.length,
+          isToday: key === todayKey,
+        };
+      });
+
+      setWeekStrip(strip);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, habits.length, habits.filter((h) => h.completed).length]);
+
+  // --- Current Streak: consecutive days where ALL habits were completed.
+  // Looks back up to a year so long streaks aren't cut off. If today isn't
+  // finished yet, the streak isn't broken until the day actually ends —
+  // it's counted from the most recent complete day backwards. ---
+  const [currentStreak, setCurrentStreak] = useState(0);
+
+  useEffect(() => {
+    if (!session?.user) return;
+
+    if (habits.length === 0) {
+      setCurrentStreak(0);
+      return;
+    }
+
+    let cancelled = false;
+    const today = new Date();
+    const start = new Date();
+    start.setDate(today.getDate() - 364);
+    const startKey = toDateKey(start);
+    const endKey = toDateKey(today);
+
+    fetchLogsForRange(startKey, endKey).then((logs) => {
+      if (cancelled) return;
+
+      const countsByDate = new Map<string, Set<string>>();
+      for (const log of logs) {
+        const set = countsByDate.get(log.completed_date) ?? new Set<string>();
+        set.add(log.habit_id);
+        countsByDate.set(log.completed_date, set);
+      }
+
+      const isDayComplete = (key: string) =>
+        (countsByDate.get(key)?.size ?? 0) >= habits.length;
+
+      const cursor = new Date();
+      if (!isDayComplete(todayDateKey())) {
+        // Today isn't done yet — that's fine, it's not "missed" until
+        // the day ends. Start counting from yesterday instead.
+        cursor.setDate(cursor.getDate() - 1);
+      }
+
+      let streak = 0;
+      while (isDayComplete(toDateKey(cursor))) {
+        streak += 1;
+        cursor.setDate(cursor.getDate() - 1);
+      }
+
+      setCurrentStreak(streak);
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id, habits.length, habits.filter((h) => h.completed).length]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -127,15 +259,24 @@ export default function DashboardScreen() {
         <View style={styles.header}>
           <View>
             <Text style={styles.greetingText}>Hello, {username} 👋</Text>
-            <Text style={styles.subtitleText}>Let&apos;s smash your goals today</Text>
+            <Text style={styles.subtitleText}>{formatFullDate(new Date())}</Text>
           </View>
-      <TouchableOpacity
-  style={styles.profileAvatar}
-  onPress={handleLogout}
->
-  <Text style={styles.avatarText}>{username.charAt(0).toUpperCase()}</Text>
-</TouchableOpacity>
+          <View style={styles.headerActions}>
+            <TouchableOpacity
+              style={styles.infoButton}
+              onPress={() => setAboutVisible(true)}
+              accessibilityLabel="About this app"
+            >
+              <Text style={styles.infoButtonText}>i</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.profileAvatar}
+              onPress={handleLogout}
+            >
+              <Text style={styles.avatarText}>{username.charAt(0).toUpperCase()}</Text>
+            </TouchableOpacity>
           </View>
+        </View>
       
 
         {/* --- Quick Stats Rows (Responsive Side-by-Side) --- */}
@@ -143,8 +284,10 @@ export default function DashboardScreen() {
           {/* Weekly Streak Card */}
           <View style={[styles.statCard, styles.streakCard]}>
             <Text style={styles.cardLabelText}>Current Streak</Text>
-            <Text style={styles.statValueText}>12 🔥</Text>
-            <Text style={styles.cardSublabelText}>Days consistent</Text>
+            <Text style={styles.statValueText}>{currentStreak} 🔥</Text>
+            <Text style={styles.cardSublabelText}>
+              {currentStreak === 1 ? "Day" : "Days"} consistent
+            </Text>
           </View>
 
           {/* Progress Card */}
@@ -182,8 +325,8 @@ export default function DashboardScreen() {
           <Text style={styles.sectionTitleText}>This Week</Text>
         </View>
         <View style={styles.weekStrip}>
-          {WEEKLY_STREAK.map((item, index) => (
-            <View key={index} style={[styles.dayColumn, item.isToday && styles.todayColumn]}>
+          {weekStrip.map((item) => (
+            <View key={item.dateKey} style={[styles.dayColumn, item.isToday && styles.todayColumn]}>
               <Text style={[styles.dayText, item.isToday && styles.todayText]}>{item.day}</Text>
               <View 
                 style={[
@@ -280,6 +423,48 @@ export default function DashboardScreen() {
       >
         <Text style={styles.fabIcon}>+</Text>
       </TouchableOpacity>
+
+      {/* --- About / Help Sheet --- */}
+      <Modal
+        visible={aboutVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setAboutVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <TouchableOpacity
+            style={styles.modalBackdrop}
+            activeOpacity={1}
+            onPress={() => setAboutVisible(false)}
+          />
+          <View style={styles.modalSheet}>
+            <View style={styles.modalHandle} />
+            <View style={styles.modalHeaderRow}>
+              <Text style={styles.modalTitle}>About HabitTracker</Text>
+              <TouchableOpacity
+                onPress={() => setAboutVisible(false)}
+                style={styles.modalCloseButton}
+              >
+                <Text style={styles.modalCloseText}>✕</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {ABOUT_SECTIONS.map((section) => (
+                <View key={section.title} style={styles.aboutRow}>
+                  <View style={styles.aboutIconContainer}>
+                    <Text style={styles.aboutIcon}>{section.icon}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.aboutRowTitle}>{section.title}</Text>
+                    <Text style={styles.aboutRowDescription}>{section.description}</Text>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -315,6 +500,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#6B7280',
     marginTop: 4,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  infoButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    borderColor: '#D1D5DB',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#FFF',
+  },
+  infoButtonText: {
+    fontSize: 15,
+    fontWeight: '700',
+    fontStyle: 'italic',
+    color: '#6366F1',
   },
   profileAvatar: {
     width: 44,
@@ -627,5 +833,82 @@ emptySubtitle: {
   fontSize: 16,
   color: "gray",
   textAlign: "center",
+},
+modalOverlay: {
+  flex: 1,
+  justifyContent: 'flex-end',
+},
+modalBackdrop: {
+  ...StyleSheet.absoluteFillObject,
+  backgroundColor: 'rgba(17, 24, 39, 0.5)',
+},
+modalSheet: {
+  backgroundColor: '#FFF',
+  borderTopLeftRadius: 28,
+  borderTopRightRadius: 28,
+  paddingHorizontal: 24,
+  paddingTop: 12,
+  paddingBottom: 36,
+  maxHeight: '80%',
+},
+modalHandle: {
+  width: 40,
+  height: 4,
+  borderRadius: 2,
+  backgroundColor: '#E5E7EB',
+  alignSelf: 'center',
+  marginBottom: 16,
+},
+modalHeaderRow: {
+  flexDirection: 'row',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 20,
+},
+modalTitle: {
+  fontSize: 20,
+  fontWeight: '700',
+  color: '#111827',
+},
+modalCloseButton: {
+  width: 30,
+  height: 30,
+  borderRadius: 15,
+  backgroundColor: '#F3F4F6',
+  alignItems: 'center',
+  justifyContent: 'center',
+},
+modalCloseText: {
+  fontSize: 14,
+  fontWeight: '700',
+  color: '#374151',
+},
+aboutRow: {
+  flexDirection: 'row',
+  alignItems: 'flex-start',
+  marginBottom: 20,
+},
+aboutIconContainer: {
+  width: 40,
+  height: 40,
+  borderRadius: 12,
+  backgroundColor: '#F3F4F6',
+  alignItems: 'center',
+  justifyContent: 'center',
+  marginRight: 14,
+},
+aboutIcon: {
+  fontSize: 18,
+},
+aboutRowTitle: {
+  fontSize: 15,
+  fontWeight: '700',
+  color: '#111827',
+  marginBottom: 3,
+},
+aboutRowDescription: {
+  fontSize: 13,
+  color: '#6B7280',
+  lineHeight: 19,
 },
 });
