@@ -1,5 +1,6 @@
-import React, { createContext, useState, useEffect } from "react";
 import type { Session } from "@supabase/supabase-js";
+import React, { createContext, useEffect, useState } from "react";
+import { toDateKey, todayDateKey } from "../lib/dateUtils";
 import { supabase } from "../lib/supabase";
 
 export interface Habit {
@@ -22,6 +23,11 @@ export interface ReportItem {
   rate: number; // 0-100
 }
 
+export interface HabitLog {
+  habit_id: string;
+  completed_date: string; // YYYY-MM-DD
+}
+
 interface HabitContextValue {
   session: Session | null;
   authLoading: boolean;
@@ -38,20 +44,13 @@ interface HabitContextValue {
   deleteHabit: (id: string) => Promise<void>;
   refreshHabits: () => Promise<void>;
   fetchReport: (days: number) => Promise<ReportItem[]>;
+  fetchLogsForRange: (startDateKey: string, endDateKey: string) => Promise<HabitLog[]>;
   signOut: () => Promise<void>;
 }
 
 export const HabitContext = createContext<HabitContextValue>(
   null as unknown as HabitContextValue
 );
-
-// Local YYYY-MM-DD (not UTC) so "today" matches the user's own clock
-function dateStr(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 function mapRow(row: any): Omit<Habit, "completed"> {
   return {
@@ -112,7 +111,8 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const today = dateStr(new Date());
+    // "Today" is always derived live from the device clock, never stored.
+    const today = todayDateKey();
     const { data: logsToday, error: logsError } = await supabase
       .from("habit_logs")
       .select("habit_id")
@@ -170,7 +170,7 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
     const target = habits.find((h) => h.id === id);
     if (!target) return;
 
-    const today = dateStr(new Date());
+    const today = todayDateKey();
     const willBeCompleted = !target.completed;
 
     // Optimistic update
@@ -222,8 +222,8 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
     const end = new Date();
     const start = new Date();
     start.setDate(end.getDate() - (days - 1));
-    const startStr = dateStr(start);
-    const endStr = dateStr(end);
+    const startStr = toDateKey(start);
+    const endStr = toDateKey(end);
 
     const { data: logs, error } = await supabase
       .from("habit_logs")
@@ -251,6 +251,29 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
     });
   };
 
+  // Raw completion log rows for any date range (e.g. the current week),
+  // used to color in the calendar strip with real data.
+  const fetchLogsForRange = async (
+    startDateKey: string,
+    endDateKey: string
+  ): Promise<HabitLog[]> => {
+    if (!session?.user) return [];
+
+    const { data, error } = await supabase
+      .from("habit_logs")
+      .select("habit_id, completed_date")
+      .eq("user_id", session.user.id)
+      .gte("completed_date", startDateKey)
+      .lte("completed_date", endDateKey);
+
+    if (error) {
+      console.log("Failed to load logs for range:", error.message);
+      return [];
+    }
+
+    return data ?? [];
+  };
+
   const signOut = async () => {
     await supabase.auth.signOut();
     setHabits([]);
@@ -270,6 +293,7 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
         deleteHabit,
         refreshHabits,
         fetchReport,
+        fetchLogsForRange,
         signOut,
       }}
     >

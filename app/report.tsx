@@ -1,16 +1,17 @@
-import { useContext, useEffect, useState } from "react";
 import { router } from "expo-router";
-import { HabitContext } from "../context/Habitcontext";
-import type { ReportItem } from "../context/Habitcontext";
+import { useContext, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
+  ScrollView,
   StyleSheet,
   Text,
-  View,
-  ScrollView,
   TouchableOpacity,
-  ActivityIndicator,
+  View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import type { ReportItem } from "../context/Habitcontext";
+import { HabitContext } from "../context/Habitcontext";
+import { formatMonthLabel, formatWeekRangeLabel } from "../lib/dateUtils";
 
 type Range = "week" | "month";
 
@@ -45,6 +46,10 @@ export default function ReportsScreen() {
       ? Math.round(data.reduce((sum, d) => sum + d.rate, 0) / data.length)
       : 0;
 
+  // Always computed live from the current device date — never hardcoded.
+  const rangeLabel =
+    range === "week" ? formatWeekRangeLabel(new Date()) : formatMonthLabel(new Date());
+
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
@@ -74,6 +79,8 @@ export default function ReportsScreen() {
         </TouchableOpacity>
       </View>
 
+      <Text style={styles.rangeLabel}>{rangeLabel}</Text>
+
       {loading ? (
         <ActivityIndicator size="large" color="black" style={{ marginTop: 40 }} />
       ) : data.length === 0 ? (
@@ -90,7 +97,7 @@ export default function ReportsScreen() {
         >
           <View style={styles.summaryCard}>
             <Text style={styles.summaryLabel}>
-              Overall completion · {range === "week" ? "last 7 days" : "last 30 days"}
+              Overall completion · {rangeLabel}
             </Text>
             <Text style={styles.summaryValue}>{overallRate}%</Text>
             <View style={styles.summaryBarBg}>
@@ -194,6 +201,13 @@ const styles = StyleSheet.create({
   },
   toggleTextActive: {
     color: "#111827",
+  },
+  rangeLabel: {
+    textAlign: "center",
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#9CA3AF",
+    marginBottom: 16,
   },
   scrollContent: {
     paddingHorizontal: 20,
