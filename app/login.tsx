@@ -23,10 +23,7 @@ export default function LoginScreen() {
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
 
     if (error) {
@@ -62,6 +59,14 @@ export default function LoginScreen() {
         onChangeText={setPassword}
       />
 
+      {/* Forgot password — right-aligned, sits between the input and the login button */}
+      <TouchableOpacity
+        onPress={() => router.push("/forgot-password")}
+        style={styles.forgotRow}
+      >
+        <Text style={styles.forgotText}>Forgot password?</Text>
+      </TouchableOpacity>
+
       <TouchableOpacity
         style={styles.button}
         onPress={handleLogin}
@@ -89,14 +94,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 25,
   },
-
   title: {
     fontSize: 30,
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 30,
   },
-
   input: {
     borderWidth: 1,
     borderColor: "#ccc",
@@ -104,26 +107,32 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     marginBottom: 15,
   },
-
+  forgotRow: {
+    alignSelf: "flex-end",
+    marginBottom: 20,
+    marginTop: -6,
+  },
+  forgotText: {
+    fontSize: 14,
+    color: "#6366F1",
+    fontWeight: "600",
+  },
   button: {
     backgroundColor: "black",
     padding: 15,
     borderRadius: 10,
     alignItems: "center",
   },
-
   buttonText: {
     color: "white",
     fontSize: 16,
     fontWeight: "bold",
   },
-
   linkText: {
     textAlign: "center",
     marginTop: 20,
     color: "#555",
   },
-
   linkBold: {
     fontWeight: "bold",
     color: "black",
