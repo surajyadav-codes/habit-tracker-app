@@ -1,5 +1,5 @@
 import type { Session } from "@supabase/supabase-js";
-import React, { createContext, useEffect, useState } from "react";
+import React, { createContext, useEffect, useRef, useState } from "react";
 import { toDateKey, todayDateKey } from "../lib/dateUtils";
 import { supabase } from "../lib/supabase";
 
@@ -11,6 +11,7 @@ export interface Habit {
   completed: boolean; // completed *today*
   time: string;
   icon: string;
+  createdAt: string; // ISO date string from Supabase (used for historical streak logic)
 }
 
 export interface ReportItem {
@@ -40,6 +41,10 @@ interface HabitContextValue {
     time: string;
     category: string;
   }) => Promise<{ error: string | null }>;
+  updateHabit: (
+    id: string,
+    input: { title: string; time: string; category: string }
+  ) => Promise<{ error: string | null }>;
   toggleHabit: (id: string) => Promise<void>;
   deleteHabit: (id: string) => Promise<void>;
   refreshHabits: () => Promise<void>;
@@ -60,6 +65,7 @@ function mapRow(row: any): Omit<Habit, "completed"> {
     category: row.category,
     time: row.time,
     icon: row.icon ?? "🎯",
+    createdAt: row.created_at ?? new Date().toISOString(),
   };
 }
 
@@ -69,6 +75,9 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [habitsLoading, setHabitsLoading] = useState(false);
   const [editingHabit, setEditingHabit] = useState<Habit | null>(null);
+
+  // Guard against double-tap race conditions on toggleHabit
+  const togglingIds = useRef(new Set<string>());
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -165,10 +174,43 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   };
 
+  const updateHabit: HabitContextValue["updateHabit"] = async (
+    id,
+    { title, time, category }
+  ) => {
+    if (!session?.user) return { error: "Not logged in" };
+
+    const { data, error } = await supabase
+      .from("habits")
+      .update({ title, time, category })
+      .eq("id", id)
+      .eq("user_id", session.user.id)
+      .select()
+      .single();
+
+    if (error) {
+      console.log(error);
+      return { error: error.message };
+    }
+
+    setHabits((prev) =>
+      prev.map((h) => (h.id === id ? { ...h, ...mapRow(data) } : h))
+    );
+    return { error: null };
+  };
+
   const toggleHabit = async (id: string) => {
     if (!session?.user) return;
+
+    // Prevent double-tap race condition
+    if (togglingIds.current.has(id)) return;
+    togglingIds.current.add(id);
+
     const target = habits.find((h) => h.id === id);
-    if (!target) return;
+    if (!target) {
+      togglingIds.current.delete(id);
+      return;
+    }
 
     const today = todayDateKey();
     const willBeCompleted = !target.completed;
@@ -178,36 +220,64 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
       prev.map((h) => (h.id === id ? { ...h, completed: willBeCompleted } : h))
     );
 
-    if (willBeCompleted) {
-      const { error } = await supabase.from("habit_logs").insert([
-        { habit_id: id, user_id: session.user.id, completed_date: today },
-      ]);
-      if (error) {
-        console.log(error);
-        setHabits((prev) =>
-          prev.map((h) => (h.id === id ? { ...h, completed: !willBeCompleted } : h))
+    try {
+      if (willBeCompleted) {
+        const { error } = await supabase.from("habit_logs").upsert(
+          [{ habit_id: id, user_id: session.user.id, completed_date: today }],
+          { onConflict: "habit_id,user_id,completed_date" }
         );
+        if (error) {
+          console.log(error);
+          setHabits((prev) =>
+            prev.map((h) =>
+              h.id === id ? { ...h, completed: !willBeCompleted } : h
+            )
+          );
+        }
+      } else {
+        const { error } = await supabase
+          .from("habit_logs")
+          .delete()
+          .eq("habit_id", id)
+          .eq("user_id", session.user.id)
+          .eq("completed_date", today);
+        if (error) {
+          console.log(error);
+          setHabits((prev) =>
+            prev.map((h) =>
+              h.id === id ? { ...h, completed: !willBeCompleted } : h
+            )
+          );
+        }
       }
-    } else {
-      const { error } = await supabase
-        .from("habit_logs")
-        .delete()
-        .eq("habit_id", id)
-        .eq("completed_date", today);
-      if (error) {
-        console.log(error);
-        setHabits((prev) =>
-          prev.map((h) => (h.id === id ? { ...h, completed: !willBeCompleted } : h))
-        );
-      }
+    } finally {
+      togglingIds.current.delete(id);
     }
   };
 
   const deleteHabit = async (id: string) => {
+    if (!session?.user) return;
+
     const previous = habits;
     setHabits((prev) => prev.filter((h) => h.id !== id));
 
-    const { error } = await supabase.from("habits").delete().eq("id", id);
+    // Delete associated logs first (in case there's no CASCADE constraint)
+    const { error: logsError } = await supabase
+      .from("habit_logs")
+      .delete()
+      .eq("habit_id", id)
+      .eq("user_id", session.user.id);
+
+    if (logsError) {
+      console.log("Failed to delete habit logs:", logsError.message);
+    }
+
+    // Now delete the habit itself (with user_id filter for safety)
+    const { error } = await supabase
+      .from("habits")
+      .delete()
+      .eq("id", id)
+      .eq("user_id", session.user.id);
 
     if (error) {
       console.log(error);
@@ -215,7 +285,9 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
-  // Completion rate per habit over the last `days` days (today included)
+  // Completion rate per habit over the last `days` days (today included).
+  // We read habits from the current state via a fresh snapshot to avoid
+  // stale closure issues.
   const fetchReport = async (days: number): Promise<ReportItem[]> => {
     if (!session?.user) return [];
 
@@ -225,28 +297,48 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
     const startStr = toDateKey(start);
     const endStr = toDateKey(end);
 
-    const { data: logs, error } = await supabase
-      .from("habit_logs")
-      .select("habit_id, completed_date")
-      .eq("user_id", session.user.id)
-      .gte("completed_date", startStr)
-      .lte("completed_date", endStr);
+    // Fetch both logs and a fresh habits snapshot in parallel
+    const [logsResult, habitsResult] = await Promise.all([
+      supabase
+        .from("habit_logs")
+        .select("habit_id, completed_date")
+        .eq("user_id", session.user.id)
+        .gte("completed_date", startStr)
+        .lte("completed_date", endStr),
+      supabase
+        .from("habits")
+        .select("id, title, icon, category, created_at")
+        .eq("user_id", session.user.id),
+    ]);
 
-    if (error) {
-      console.log("Failed to load report:", error.message);
+    if (logsResult.error) {
+      console.log("Failed to load report:", logsResult.error.message);
       return [];
     }
 
-    return habits.map((h) => {
-      const count = (logs ?? []).filter((l) => l.habit_id === h.id).length;
+    const logs = logsResult.data ?? [];
+    const freshHabits = habitsResult.data ?? [];
+
+    return freshHabits.map((h) => {
+      // Only count days on or after the habit was created
+      const createdDate = new Date(h.created_at);
+      const effectiveStart = createdDate > start ? createdDate : start;
+      const effectiveDays = Math.max(
+        1,
+        Math.floor(
+          (end.getTime() - effectiveStart.getTime()) / (1000 * 60 * 60 * 24)
+        ) + 1
+      );
+
+      const count = logs.filter((l) => l.habit_id === h.id).length;
       return {
         id: h.id,
         title: h.title,
-        icon: h.icon,
+        icon: h.icon ?? "🎯",
         category: h.category,
         completedCount: count,
-        totalDays: days,
-        rate: Math.round((count / days) * 100),
+        totalDays: effectiveDays,
+        rate: Math.round((count / effectiveDays) * 100),
       };
     });
   };
@@ -289,6 +381,7 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
         editingHabit,
         setEditingHabit,
         addHabit,
+        updateHabit,
         toggleHabit,
         deleteHabit,
         refreshHabits,
