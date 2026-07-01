@@ -10,6 +10,7 @@ import {
   ActivityIndicator,
   KeyboardAvoidingView,
   Platform,
+  Alert,
 } from "react-native";
 
 export default function ForgotPasswordScreen() {
@@ -18,24 +19,39 @@ export default function ForgotPasswordScreen() {
 
   const handleSendCode = async () => {
     if (!email) {
-      alert("Please enter your email address");
+      Alert.alert("Error", "Please enter your email address");
       return;
     }
 
     setLoading(true);
-    // Supabase sends a 6-digit OTP code to the email for password recovery.
-    // The `type: "email"` here is intentional — Supabase routes it as a
-    // recovery OTP when called from resetPasswordForEmail.
-    const { error } = await supabase.auth.resetPasswordForEmail(email);
-    setLoading(false);
 
-    if (error) {
-      alert(error.message);
-      return;
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email);
+      setLoading(false);
+
+      if (error) {
+        // Supabase free tier allows ~3 recovery emails per hour.
+        // A 500 or rate-limit error gets a friendly message instead of raw JSON.
+        const isSeverError =
+          error.status === 500 || error.status === 429;
+        Alert.alert(
+          "Unable to Send Code",
+          isSeverError
+            ? "Too many requests. Please wait a few minutes and try again."
+            : error.message
+        );
+        return;
+      }
+
+      // Pass the email along so the next screen can verify against the same address
+      router.push({ pathname: "/verify-reset", params: { email } });
+    } catch (e) {
+      setLoading(false);
+      Alert.alert(
+        "Network Error",
+        "Could not reach the server. Please check your internet connection and try again."
+      );
     }
-
-    // Pass the email along so the next screen can verify against the same address
-    router.push({ pathname: "/verify-reset", params: { email } });
   };
 
   return (
