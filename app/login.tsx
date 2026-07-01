@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { supabase } from "../lib/supabase";
-import { ToastAndroid, Platform } from "react-native";
+import { ToastAndroid, Platform, Alert } from "react-native";
 import {
   StyleSheet,
   Text,
@@ -18,7 +18,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      alert("Please fill all fields");
+      Alert.alert("Error", "Please fill all fields");
       return;
     }
 
@@ -27,12 +27,14 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
-      alert(error.message);
+      Alert.alert("Login Failed", error.message);
       return;
     }
 
     if (Platform.OS === "android") {
       ToastAndroid.show("Welcome back ✅", ToastAndroid.SHORT);
+    } else {
+      Alert.alert("Welcome back ✅");
     }
 
     router.replace("/dashboard");
