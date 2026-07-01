@@ -93,6 +93,9 @@ export default function DashboardScreen() {
 
   const [aboutVisible, setAboutVisible] = useState(false);
 
+  // Calculate completed count once for use in dependency arrays
+  const completedCount = habits.filter((h) => h.completed).length;
+
   // --- Live calendar strip: always derived from the device's current date,
   // and colored using *real* habit_logs data — never hardcoded. ---
   const [weekStrip, setWeekStrip] = useState<DayStreak[]>([]);
@@ -109,8 +112,6 @@ export default function DashboardScreen() {
     fetchLogsForRange(startKey, endKey).then((logs) => {
       if (cancelled) return;
 
-      // A day counts as "complete" if every habit that exists today was
-      // logged as done on that date.
       const countsByDate = new Map<string, Set<string>>();
       for (const log of logs) {
         const set = countsByDate.get(log.completed_date) ?? new Set<string>();
@@ -121,11 +122,15 @@ export default function DashboardScreen() {
       const strip: DayStreak[] = weekDates.map((d, i) => {
         const key = toDateKey(d);
         const doneCount = countsByDate.get(key)?.size ?? 0;
+        // Only count habits that existed on this day (by their created_at date)
+        const habitsOnDay = habits.filter(
+          (h) => toDateKey(new Date(h.createdAt)) <= key
+        ).length;
         return {
           day: WEEKDAY_SHORT[i],
           date: d.getDate(),
           dateKey: key,
-          isComplete: habits.length > 0 && doneCount >= habits.length,
+          isComplete: habitsOnDay > 0 && doneCount >= habitsOnDay,
           isToday: key === todayKey,
         };
       });
@@ -136,7 +141,7 @@ export default function DashboardScreen() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id, habits.length, habits.filter((h) => h.completed).length]);
+  }, [session?.user?.id, habits.length, completedCount]);
 
   // --- Current Streak: consecutive days where ALL habits were completed.
   // Looks back up to a year so long streaks aren't cut off. If today isn't
@@ -169,8 +174,15 @@ export default function DashboardScreen() {
         countsByDate.set(log.completed_date, set);
       }
 
-      const isDayComplete = (key: string) =>
-        (countsByDate.get(key)?.size ?? 0) >= habits.length;
+      // A day is "complete" if every habit that existed on that day was done.
+      // This prevents streaks from breaking when new habits are added.
+      const isDayComplete = (key: string) => {
+        const habitsOnDay = habits.filter(
+          (h) => toDateKey(new Date(h.createdAt)) <= key
+        ).length;
+        if (habitsOnDay === 0) return false;
+        return (countsByDate.get(key)?.size ?? 0) >= habitsOnDay;
+      };
 
       const cursor = new Date();
       if (!isDayComplete(todayDateKey())) {
@@ -191,7 +203,7 @@ export default function DashboardScreen() {
     return () => {
       cancelled = true;
     };
-  }, [session?.user?.id, habits.length, habits.filter((h) => h.completed).length]);
+  }, [session?.user?.id, habits.length, completedCount]);
 
   const handleLogout = () => {
     Alert.alert(
@@ -214,8 +226,6 @@ export default function DashboardScreen() {
     );
   };
 
-  // Calculate dynamic progress
-  const completedCount = habits.filter((h) => h.completed).length;
   const totalCount = habits.length;
   const progressPercentage = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
 
