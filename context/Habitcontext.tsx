@@ -222,10 +222,9 @@ export function HabitProvider({ children }: { children: React.ReactNode }) {
 
     try {
       if (willBeCompleted) {
-        const { error } = await supabase.from("habit_logs").upsert(
-          [{ habit_id: id, user_id: session.user.id, completed_date: today }],
-          { onConflict: "habit_id,user_id,completed_date" }
-        );
+        const { error } = await supabase.from("habit_logs").insert([
+          { habit_id: id, user_id: session.user.id, completed_date: today },
+        ]);
         if (error) {
           console.log(error);
           setHabits((prev) =>
