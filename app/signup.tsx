@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { supabase } from "../lib/supabase";
-import { ToastAndroid, Platform } from "react-native";
+import { ToastAndroid, Platform, Alert } from "react-native";
 import {
     ActivityIndicator,
     StyleSheet,
@@ -48,12 +48,12 @@ const [loading, setLoading] = useState(false);
   disabled={loading}
 onPress={async () => {
   if (!name || !email || !password) {
-    alert("Please fill all fields");
+    Alert.alert("Error", "Please fill all fields");
     return;
   }
 
   if (password.length < 6) {
-    alert("Password must be at least 6 characters");
+    Alert.alert("Error", "Password must be at least 6 characters");
     return;
   }
 
@@ -68,22 +68,22 @@ onPress={async () => {
   setLoading(false);
 
   if (error) {
-    alert(error.message);
+    Alert.alert("Signup Failed", error.message);
     return;
   }
 
   // If email confirmation is enabled in Supabase, signUp succeeds
   // but no session is returned yet — the user must confirm first.
   if (!data.session) {
-    alert(
-      "Account created! Please check your email to confirm your account, then log in."
-    );
+    Alert.alert("Account Created", "Please check your email to confirm your account, then log in.");
     router.replace("/login");
     return;
   }
 
   if (Platform.OS === "android") {
     ToastAndroid.show("Account created successfully ✅", ToastAndroid.SHORT);
+  } else {
+    Alert.alert("Account created successfully ✅");
   }
 
   router.replace("/dashboard");
