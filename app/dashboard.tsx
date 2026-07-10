@@ -87,8 +87,8 @@ export default function DashboardScreen() {
   // before names were stored), fall back to the part of the email before
   // the @ instead of dumping the whole address into the greeting.
   const username =
-    session?.user?.user_metadata?.full_name ||
-    session?.user?.email?.split("@")[0] ||
+  session?.user?.user_metadata?.username ||
+session?.user?.user_metadata?.full_name ||
     "User";
 
   const [aboutVisible, setAboutVisible] = useState(false);
