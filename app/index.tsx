@@ -1,18 +1,11 @@
 import { useContext, useEffect } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-} from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from "react-native";
 import { router } from "expo-router";
 import { HabitContext } from "../context/Habitcontext";
 
 export default function HomeScreen() {
   const { session, authLoading } = useContext(HabitContext);
 
-  // If a session already exists (returning user, app reopened), skip straight in
   useEffect(() => {
     if (!authLoading && session) {
       router.replace("/dashboard");
@@ -29,23 +22,15 @@ export default function HomeScreen() {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Habit Tracker</Text>
+      <Text style={styles.emoji}>🎯</Text>
+      <Text style={styles.title}>HabitTracker</Text>
+      <Text style={styles.subtitle}>Build Better Habits Daily</Text>
 
-      <Text style={styles.subtitle}>
-        Build Better Habits Daily
-      </Text>
-
-      <TouchableOpacity
-        style={styles.button}
-        onPress={() => router.push("/signup")}
-      >
+      <TouchableOpacity style={styles.button} onPress={() => router.push("/signup")}>
         <Text style={styles.buttonText}>Get Started</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.secondaryButton}
-        onPress={() => router.push("/login")}
-      >
+      <TouchableOpacity style={styles.secondaryButton} onPress={() => router.push("/login")}>
         <Text style={styles.secondaryButtonText}>I already have an account</Text>
       </TouchableOpacity>
     </View>
@@ -53,42 +38,12 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-
-  title: {
-    fontSize: 32,
-    fontWeight: "bold",
-  },
-
-  subtitle: {
-    fontSize: 18,
-    marginTop: 10,
-  },
-  button: {
-  marginTop: 20,
-  backgroundColor: "black",
-  paddingHorizontal: 20,
-  paddingVertical: 12,
-  borderRadius: 10,
-},
-
-buttonText: {
-  color: "white",
-  fontSize: 16,
-  fontWeight: "bold",
-},
-
-secondaryButton: {
-  marginTop: 16,
-},
-
-secondaryButtonText: {
-  color: "#555",
-  fontSize: 14,
-  fontWeight: "600",
-},
+  container: { flex: 1, justifyContent: "center", alignItems: "center", paddingHorizontal: 25, backgroundColor: "#F9FAFB" },
+  emoji: { fontSize: 60, marginBottom: 16 },
+  title: { fontSize: 32, fontWeight: "bold", color: "#111827" },
+  subtitle: { fontSize: 16, color: "#6B7280", marginTop: 8, marginBottom: 40 },
+  button: { backgroundColor: "#111827", paddingHorizontal: 32, paddingVertical: 14, borderRadius: 12, width: "100%", alignItems: "center" },
+  buttonText: { color: "white", fontSize: 16, fontWeight: "bold" },
+  secondaryButton: { marginTop: 16, paddingVertical: 12 },
+  secondaryButtonText: { color: "#6B7280", fontSize: 14, fontWeight: "600" },
 });
