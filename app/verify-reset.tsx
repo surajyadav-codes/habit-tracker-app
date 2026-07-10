@@ -2,20 +2,12 @@ import { useState } from "react";
 import { router, useLocalSearchParams } from "expo-router";
 import { supabase } from "../lib/supabase";
 import {
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
-  Alert,
+  StyleSheet, Text, TextInput, TouchableOpacity,
+  View, ActivityIndicator, KeyboardAvoidingView, Platform,
 } from "react-native";
 
 export default function VerifyResetScreen() {
   const { email } = useLocalSearchParams<{ email: string }>();
-
   const [otp, setOtp] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -23,28 +15,23 @@ export default function VerifyResetScreen() {
 
   const handleVerify = async () => {
     if (!otp || !newPassword || !confirmPassword) {
-      Alert.alert("Error", "Please fill all fields");
+      alert("Please fill all fields");
       return;
     }
-
     if (otp.length !== 6) {
-      Alert.alert("Error", "The verification code should be 6 digits");
+      alert("Verification code must be 6 digits");
       return;
     }
-
     if (newPassword.length < 6) {
-      Alert.alert("Error", "New password must be at least 6 characters");
+      alert("Password must be at least 6 characters");
       return;
     }
-
     if (newPassword !== confirmPassword) {
-      Alert.alert("Error", "Passwords do not match");
+      alert("Passwords do not match");
       return;
     }
 
     setLoading(true);
-
-    // Step 1: verify the OTP code Supabase emailed them
     const { error: otpError } = await supabase.auth.verifyOtp({
       email: email ?? "",
       token: otp,
@@ -53,34 +40,25 @@ export default function VerifyResetScreen() {
 
     if (otpError) {
       setLoading(false);
-      Alert.alert("Error", "Invalid or expired code. Please request a new one.");
+      alert("Invalid or expired code. Please request a new one.");
       return;
     }
 
-    // Step 2: OTP verified — now set the new password
-    const { error: updateError } = await supabase.auth.updateUser({
-      password: newPassword,
-    });
-
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
     setLoading(false);
 
     if (updateError) {
-      Alert.alert("Error", updateError.message);
+      alert(updateError.message);
       return;
     }
 
-    Alert.alert("Success", "Password updated successfully! Please log in with your new password.");
-    // Sign out any auto-session that Supabase created after OTP verification,
-    // so the user lands cleanly on the login screen.
+    alert("Password updated! Please log in with your new password.");
     await supabase.auth.signOut();
     router.replace("/login");
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
-    >
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : undefined}>
       <TouchableOpacity onPress={() => router.back()} style={styles.backButton}>
         <Text style={styles.backText}>{"‹"}</Text>
       </TouchableOpacity>
@@ -89,12 +67,11 @@ export default function VerifyResetScreen() {
       <Text style={styles.subtitle}>
         We sent a 6-digit code to{"\n"}
         <Text style={styles.emailHighlight}>{email}</Text>
-        {"\n"}Enter it below along with your new password.
       </Text>
 
       <Text style={styles.label}>Verification Code</Text>
       <TextInput
-        placeholder="Enter 6-digit code"
+        placeholder="6-digit code"
         style={styles.input}
         value={otp}
         onChangeText={(t) => setOtp(t.replace(/[^0-9]/g, "").slice(0, 6))}
@@ -121,91 +98,27 @@ export default function VerifyResetScreen() {
         secureTextEntry
       />
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleVerify}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Reset Password</Text>
-        )}
+      <TouchableOpacity style={styles.button} onPress={handleVerify} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Reset Password</Text>}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => router.replace("/forgot-password")}>
-        <Text style={styles.resendText}>Didn&apos;t get the code? Send again</Text>
+        <Text style={styles.linkText}>Didn&apos;t get the code? Send again</Text>
       </TouchableOpacity>
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 25,
-  },
-  backButton: {
-    position: "absolute",
-    top: 60,
-    left: 20,
-    padding: 8,
-  },
-  backText: {
-    fontSize: 32,
-    color: "#111827",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 12,
-    color: "#111827",
-  },
-  subtitle: {
-    fontSize: 14,
-    color: "#6B7280",
-    textAlign: "center",
-    marginBottom: 28,
-    lineHeight: 22,
-  },
-  emailHighlight: {
-    fontWeight: "700",
-    color: "#111827",
-  },
-  label: {
-    fontSize: 13,
-    fontWeight: "600",
-    color: "#374151",
-    marginBottom: 6,
-    marginTop: 4,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 14,
-    fontSize: 16,
-  },
-  button: {
-    backgroundColor: "black",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 6,
-    marginBottom: 16,
-  },
-  buttonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  resendText: {
-    textAlign: "center",
-    color: "#6366F1",
-    fontWeight: "600",
-    fontSize: 14,
-  },
+  container: { flex: 1, justifyContent: "center", paddingHorizontal: 25 },
+  backButton: { position: "absolute", top: 60, left: 20, padding: 8 },
+  backText: { fontSize: 32, color: "#111827" },
+  title: { fontSize: 28, fontWeight: "bold", textAlign: "center", marginBottom: 12, color: "#111827" },
+  subtitle: { fontSize: 14, color: "#6B7280", textAlign: "center", marginBottom: 28, lineHeight: 22 },
+  emailHighlight: { fontWeight: "700", color: "#111827" },
+  label: { fontSize: 13, fontWeight: "600", color: "#374151", marginBottom: 6, marginTop: 4 },
+  input: { borderWidth: 1, borderColor: "#D1D5DB", padding: 15, borderRadius: 10, marginBottom: 14, fontSize: 15, backgroundColor: "#fff" },
+  button: { backgroundColor: "#111827", padding: 15, borderRadius: 10, alignItems: "center", marginTop: 6, marginBottom: 16 },
+  buttonText: { color: "white", fontSize: 16, fontWeight: "bold" },
+  linkText: { textAlign: "center", color: "#6366F1", fontWeight: "600", fontSize: 14 },
 });
