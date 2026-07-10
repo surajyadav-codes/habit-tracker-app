@@ -1,14 +1,9 @@
 import { useState } from "react";
 import { router } from "expo-router";
 import { supabase } from "../lib/supabase";
-import { ToastAndroid, Platform, Alert } from "react-native";
 import {
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-  ActivityIndicator,
+  StyleSheet, Text, TextInput, TouchableOpacity,
+  View, ActivityIndicator,
 } from "react-native";
 
 export default function LoginScreen() {
@@ -18,7 +13,7 @@ export default function LoginScreen() {
 
   const handleLogin = async () => {
     if (!email || !password) {
-      Alert.alert("Error", "Please fill all fields");
+      alert("Please fill all fields");
       return;
     }
 
@@ -27,14 +22,8 @@ export default function LoginScreen() {
     setLoading(false);
 
     if (error) {
-      Alert.alert("Login Failed", error.message);
+      alert(error.message);
       return;
-    }
-
-    if (Platform.OS === "android") {
-      ToastAndroid.show("Welcome back ✅", ToastAndroid.SHORT);
-    } else {
-      Alert.alert("Welcome back ✅");
     }
 
     router.replace("/dashboard");
@@ -45,40 +34,27 @@ export default function LoginScreen() {
       <Text style={styles.title}>Welcome Back</Text>
 
       <TextInput
-        placeholder="Enter your email"
+        placeholder="Email address"
         style={styles.input}
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
         keyboardType="email-address"
       />
-
       <TextInput
-        placeholder="Enter your password"
+        placeholder="Password"
         secureTextEntry
         style={styles.input}
         value={password}
         onChangeText={setPassword}
       />
 
-      {/* Forgot password — right-aligned, sits between the input and the login button */}
-      <TouchableOpacity
-        onPress={() => router.push("/forgot-password")}
-        style={styles.forgotRow}
-      >
+      <TouchableOpacity onPress={() => router.push("/forgot-password")} style={styles.forgotRow}>
         <Text style={styles.forgotText}>Forgot password?</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity
-        style={styles.button}
-        onPress={handleLogin}
-        disabled={loading}
-      >
-        {loading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <Text style={styles.buttonText}>Log In</Text>
-        )}
+      <TouchableOpacity style={styles.button} onPress={handleLogin} disabled={loading}>
+        {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.buttonText}>Log In</Text>}
       </TouchableOpacity>
 
       <TouchableOpacity onPress={() => router.push("/signup")}>
@@ -91,52 +67,13 @@ export default function LoginScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: "center",
-    paddingHorizontal: 25,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginBottom: 30,
-  },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ccc",
-    padding: 15,
-    borderRadius: 10,
-    marginBottom: 15,
-  },
-  forgotRow: {
-    alignSelf: "flex-end",
-    marginBottom: 20,
-    marginTop: -6,
-  },
-  forgotText: {
-    fontSize: 14,
-    color: "#6366F1",
-    fontWeight: "600",
-  },
-  button: {
-    backgroundColor: "black",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-  buttonText: {
-    color: "white",
-    fontSize: 16,
-    fontWeight: "bold",
-  },
-  linkText: {
-    textAlign: "center",
-    marginTop: 20,
-    color: "#555",
-  },
-  linkBold: {
-    fontWeight: "bold",
-    color: "black",
-  },
+  container: { flex: 1, justifyContent: "center", paddingHorizontal: 25 },
+  title: { fontSize: 30, fontWeight: "bold", textAlign: "center", marginBottom: 30, color: "#111827" },
+  input: { borderWidth: 1, borderColor: "#D1D5DB", padding: 15, borderRadius: 10, marginBottom: 15, fontSize: 15, backgroundColor: "#fff" },
+  forgotRow: { alignSelf: "flex-end", marginBottom: 20, marginTop: -6 },
+  forgotText: { fontSize: 14, color: "#6366F1", fontWeight: "600" },
+  button: { backgroundColor: "#111827", padding: 15, borderRadius: 10, alignItems: "center", marginBottom: 20 },
+  buttonText: { color: "white", fontSize: 16, fontWeight: "bold" },
+  linkText: { textAlign: "center", color: "#555" },
+  linkBold: { fontWeight: "bold", color: "black" },
 });
